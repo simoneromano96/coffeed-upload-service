@@ -4,8 +4,12 @@ import (
 	"fmt"
 	"net/http"
 
+	// TUSD and DataStore
 	"github.com/tus/tusd/pkg/filestore"
 	tusd "github.com/tus/tusd/pkg/handler"
+
+	// CORS
+	"github.com/rs/cors"
 )
 
 func main() {
@@ -28,7 +32,7 @@ func main() {
 
 	// Create a new HTTP handler for the tusd server by providing a configuration.
 	// The StoreComposer property must be set to allow the handler to function.
-	handler, err := tusd.NewHandler(tusd.Config{
+	mux, err := tusd.NewHandler(tusd.Config{
 		BasePath:              "/files/",
 		StoreComposer:         composer,
 		NotifyCompleteUploads: true,
@@ -42,7 +46,7 @@ func main() {
 	// itself and the relevant HTTP request.
 	go func() {
 		for {
-			event := <-handler.CompleteUploads
+			event := <-mux.CompleteUploads
 			fmt.Printf("Upload %s finished\n", event.Upload.ID)
 		}
 	}()
@@ -50,8 +54,17 @@ func main() {
 	// Right now, nothing has happened since we need to start the HTTP server on
 	// our own. In the end, tusd will start listening on and accept request at
 	// http://localhost:8080/files
-	http.Handle("/files/", http.StripPrefix("/files/", handler))
-	err = http.ListenAndServe(":8083", nil)
+	c := cors.New(cors.Options{
+		AllowedOrigins:   []string{"*"},
+		AllowCredentials: false,
+		AllowedHeaders:   []string{"*"},
+		AllowedMethods:   []string{"GET", "HEAD", "POST", "PUT", "PATCH", "OPTIONS", "DELETE"},
+		// Enable Debugging for testing, consider disabling in production
+		// Debug: true,
+	})
+	handler := c.Handler(mux)
+	// http.Handle("/files/", http.StripPrefix("/files/", handler))
+	err = http.ListenAndServe(":8083", http.StripPrefix("/files/", handler))
 	if err != nil {
 		panic(fmt.Errorf("Unable to listen: %s", err))
 	}
